@@ -419,40 +419,40 @@ export default function MintyApp() {
     state.filters.text || state.filters.priorities.length || state.filters.labels.length || state.filters.due !== "all";
 
   return (
-    <div className={`min-h-screen w-full ${bg}`}>
+    <div className={`min-h-screen w-full ${bg} overflow-x-hidden`}>
       {/* Top bar */}
-      <div className={`sticky top-0 z-40 ${isDark ? "bg-zinc-950/80" : "bg-white/80"} backdrop-blur border-b ${border}`}>
-        <div className="mx-auto max-w-[1400px] px-3 sm:px-4 py-3 flex flex-wrap items-center gap-2">
+      <div className={`sticky top-0 z-40 ${isDark ? "bg-zinc-950/95" : "bg-white/95"} backdrop-blur-md border-b ${border}`}>
+        <div className="w-full px-2 sm:px-4 lg:px-6 py-2 sm:py-3 flex flex-wrap items-center gap-2">
           <div className="flex items-center gap-2 min-w-0">
             <div className="relative h-7 w-7 rounded-2xl overflow-hidden shrink-0">
               <div className="absolute inset-0 bg-gradient-to-br from-emerald-500 via-teal-500 to-sky-500" />
               <Leaf className="absolute inset-0 m-auto h-4 w-4 text-white/90" />
             </div>
-            <h1 className="text-base sm:text-xl font-semibold tracking-tight truncate">Minty</h1>
+            <h1 className="text-lg sm:text-xl font-semibold tracking-tight truncate">Minty</h1>
           </div>
 
-          <div className="ml-auto flex items-center gap-2 sm:gap-3">
+          <div className="ml-auto flex items-center gap-1 sm:gap-2">
             {/* Removed header New Task button per spec */}
 
-            <label className="relative hidden sm:block">
+            <label className="relative hidden md:block">
               <Search className={`absolute left-2 top-2.5 h-4 w-4 ${muted}`} />
               <input
                 id="searchInput"
                 placeholder="Search…"
                 value={state.filters.text}
                 onChange={(e) => setState((s: any) => ({ ...s, filters: { ...s.filters, text: e.target.value } }))}
-                className={`pl-8 pr-3 py-2 rounded-2xl ${surface} border ${border} text-sm w-56 focus:outline-none focus:ring-2 focus:ring-emerald-500/40`}
+                className={`pl-8 pr-3 py-2 rounded-2xl ${surface} border ${border} text-sm w-48 lg:w-56 focus:outline-none focus:ring-2 focus:ring-emerald-500/40`}
               />
             </label>
 
             {/* Filters & Sort remain in header */}
-            <div className="hidden md:flex items-center gap-2">
+            <div className="hidden lg:flex items-center gap-2">
               <div className="relative group">
                 <button type="button" className={`inline-flex items-center gap-2 rounded-2xl border ${border} ${surface} px-3 py-2 text-sm ${subtle}`}>
                   <Filter className="h-4 w-4" /> Filters
                   <ChevronDown className="h-4 w-4 opacity-80" />
                 </button>
-                <div className={`absolute right-0 mt-2 hidden group-hover:block w-[320px] rounded-2xl border ${border} ${surface} p-3 shadow-xl z-50`}>
+                <div className={`absolute right-0 mt-2 hidden group-hover:block w-[280px] lg:w-[320px] rounded-2xl border ${border} ${surface} p-3 shadow-xl z-50`}>
                   <div className="space-y-3">
                     <div>
                       <div className={`text-xs uppercase ${muted} mb-1`}>Priorities</div>
@@ -517,7 +517,7 @@ export default function MintyApp() {
                 </div>
               </div>
 
-              <div className="hidden md:flex items-center gap-2">
+              <div className="hidden lg:flex items-center gap-2">
                 <span className={`text-xs ${muted}`}>Sort</span>
                 <select
                   value={state.sortMode}
@@ -536,7 +536,7 @@ export default function MintyApp() {
             <button
               type="button"
               onClick={() => setState((s: any) => ({ ...s, showSettings: true }))}
-              className={`inline-flex items-center gap-2 rounded-2xl border ${border} ${surface} px-3 py-2 text-sm ${subtle}`}
+              className={`inline-flex items-center gap-1 sm:gap-2 rounded-2xl border ${border} ${surface} px-2 sm:px-3 py-2 text-sm ${subtle}`}
             >
               <SettingsIcon className="h-4 w-4" /> <span className="hidden sm:inline">Settings</span>
             </button>
@@ -545,10 +545,10 @@ export default function MintyApp() {
       </div>
 
       {/* Board */}
-      <div className="mx-auto max-w-[1400px] px-3 sm:px-4 py-4 sm:py-6">
+      <div className="w-full h-[calc(100vh-64px)] sm:h-[calc(100vh-72px)] px-2 sm:px-4 lg:px-6 py-3 sm:py-4 overflow-hidden">
         {/* Filters notice */}
         {filtersActive ? (
-          <div className="mb-3 sm:mb-4">
+          <div className="mb-2 sm:mb-3">
             <button
               type="button"
               onClick={() => setState((s: any) => ({ ...s, filters: { text: "", priorities: [], labels: [], due: "all" } }))}
@@ -567,7 +567,7 @@ export default function MintyApp() {
           onDragEnd={onDragEnd}
           onDragCancel={() => setState((s: any) => ({ ...s, activeId: null }))}
         >
-          <div className="grid grid-flow-col auto-cols-[minmax(280px,85vw)] sm:auto-cols-[minmax(300px,340px)] gap-3 sm:gap-4 overflow-x-auto pb-20 snap-x snap-mandatory touch-pan-x">
+          <div className="h-full grid grid-flow-col auto-cols-[minmax(280px,90vw)] sm:auto-cols-[minmax(300px,320px)] lg:auto-cols-[minmax(320px,360px)] gap-3 sm:gap-4 overflow-x-auto overflow-y-hidden pb-16 sm:pb-20 snap-x snap-mandatory touch-pan-x">
             {state.columns.map((col: any) => (
               <Column
                 key={col.id}
@@ -612,10 +612,10 @@ export default function MintyApp() {
         <button
           type="button"
           onClick={() => openNewTask()}
-          className="fixed bottom-6 right-6 inline-flex items-center justify-center h-14 w-14 rounded-2xl shadow-lg text-white bg-gradient-to-br from-emerald-500 via-teal-500 to-sky-500 active:scale-95"
+          className="fixed bottom-4 right-4 sm:bottom-6 sm:right-6 inline-flex items-center justify-center h-12 w-12 sm:h-14 sm:w-14 rounded-2xl shadow-lg text-white bg-gradient-to-br from-emerald-500 via-teal-500 to-sky-500 active:scale-95 z-50"
           title="Add task"
         >
-          <Plus className="h-6 w-6" />
+          <Plus className="h-5 w-5 sm:h-6 sm:w-6" />
         </button>
       </div>
 
@@ -668,9 +668,9 @@ function Column({ col, tasks, ids, theme, onOpenNew, onOpenEdit, onDeleteColumn,
       initial={{ opacity: 0, y: 6 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ type: "spring", stiffness: 120, damping: 18 }}
-      className={`snap-start shrink-0 min-w-0 rounded-3xl border ${theme.border} ${theme.surfaceAlt} backdrop-blur p-3 sm:p-4 flex flex-col relative overflow-visible`}
+      className={`snap-start shrink-0 min-w-0 h-full rounded-3xl border ${theme.border} ${theme.surfaceAlt} backdrop-blur p-3 sm:p-4 flex flex-col relative overflow-hidden`}
     >
-      <div className="flex items-center gap-2 mb-3">
+      <div className="flex items-center gap-2 mb-3 shrink-0">
         {renaming ? (
           <div className="flex items-center gap-2 w-full">
             <input
@@ -711,7 +711,7 @@ function Column({ col, tasks, ids, theme, onOpenNew, onOpenEdit, onDeleteColumn,
 
       {/* Sortable list for this column */}
       <SortableContext items={ids} strategy={verticalListSortingStrategy}>
-        <div ref={setNodeRef} className={`flex-1 min-h-[48px] rounded-2xl border border-dashed ${theme.border} p-1 space-y-2 overflow-visible`}>
+        <div ref={setNodeRef} className={`flex-1 min-h-[48px] rounded-2xl border border-dashed ${theme.border} p-2 space-y-2 overflow-y-auto overflow-x-hidden`}>
           <AnimatePresence initial={false}>
             {ids.map((taskId: string) => (
               <SortableCard
@@ -838,13 +838,13 @@ function TaskModal({ onClose, onSave, state, editingTaskId, allLabels, onDelete,
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4">
       <div className="absolute inset-0 bg-black/60" onClick={onClose} />
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         exit={{ opacity: 0, y: 10 }}
-        className={`relative w-full max-w-2xl rounded-3xl border ${theme.border} ${theme.surface} p-4`}
+        className={`relative w-full max-w-2xl max-h-[90vh] overflow-y-auto rounded-3xl border ${theme.border} ${theme.surface} p-3 sm:p-4`}
       >
         <div className="flex items-center gap-2 mb-3">
           <h3 className="text-base font-semibold">{isEdit ? "Edit task" : "New task"}</h3>
@@ -858,8 +858,8 @@ function TaskModal({ onClose, onSave, state, editingTaskId, allLabels, onDelete,
           </button>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-          <div className="md:col-span-2 space-y-3">
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-3">
+          <div className="lg:col-span-2 space-y-3">
             <input
               autoFocus
               value={title}
@@ -1009,7 +1009,7 @@ function TaskModal({ onClose, onSave, state, editingTaskId, allLabels, onDelete,
           </div>
         </div>
 
-        <div className="mt-4 flex items-center gap-2">
+        <div className="mt-4 flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
           {isEdit && (
             <button
               type="button"
@@ -1017,23 +1017,23 @@ function TaskModal({ onClose, onSave, state, editingTaskId, allLabels, onDelete,
                 onDelete(task.id);
                 onClose();
               }}
-              className="px-3 py-2 rounded-xl text-sm border border-rose-600 bg-rose-500/15 hover:bg-rose-500/25"
+              className="px-3 py-2 rounded-xl text-sm border border-rose-600 bg-rose-500/15 hover:bg-rose-500/25 sm:w-auto"
             >
               Delete
             </button>
           )}
-          <div className="ml-auto flex items-center gap-2">
+          <div className="sm:ml-auto flex items-center gap-2">
             <button
               type="button"
               onClick={onClose}
-              className={`px-3 py-2 rounded-xl text-sm border ${theme.border} ${theme.subtle}`}
+              className={`flex-1 sm:flex-none px-3 py-2 rounded-xl text-sm border ${theme.border} ${theme.subtle}`}
             >
               Cancel
             </button>
             <button
               type="button"
               onClick={handleSave}
-              className="px-3 py-2 rounded-xl text-sm border border-emerald-600 bg-emerald-500/15 hover:bg-emerald-500/25"
+              className="flex-1 sm:flex-none px-3 py-2 rounded-xl text-sm border border-emerald-600 bg-emerald-500/15 hover:bg-emerald-500/25"
             >
               {isEdit ? "Save" : "Create"}
             </button>
@@ -1047,13 +1047,13 @@ function TaskModal({ onClose, onSave, state, editingTaskId, allLabels, onDelete,
 function SettingsModal({ onClose, onToggleTheme, isDark, onExport, onImport, onOpenShortcuts, theme }: any) {
   const fileRef = useRef<HTMLInputElement | null>(null);
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4">
       <div className="absolute inset-0 bg-black/60" onClick={onClose} />
       <motion.div
         initial={{ opacity: 0, scale: 0.96 }}
         animate={{ opacity: 1, scale: 1 }}
         exit={{ opacity: 0, scale: 0.98 }}
-        className={`relative w-full max-w-md rounded-3xl border ${theme.border} ${theme.surface} p-4`}
+        className={`relative w-full max-w-md rounded-3xl border ${theme.border} ${theme.surface} p-3 sm:p-4`}
       >
         <div className="flex items-center gap-2 mb-3">
           <h3 className="text-base font-semibold">Settings</h3>
@@ -1067,7 +1067,7 @@ function SettingsModal({ onClose, onToggleTheme, isDark, onExport, onImport, onO
             <button
               type="button"
               onClick={onToggleTheme}
-              className={`inline-flex items-center gap-2 rounded-xl border ${theme.border} px-3 py-2 ${theme.subtle}`}
+              className={`inline-flex items-center gap-1 sm:gap-2 rounded-xl border ${theme.border} px-2 sm:px-3 py-2 ${theme.subtle} text-xs sm:text-sm`}
             >
               {isDark ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />} {isDark ? "Light" : "Dark"} mode
             </button>
@@ -1075,18 +1075,18 @@ function SettingsModal({ onClose, onToggleTheme, isDark, onExport, onImport, onO
 
           <div className="flex items-center justify-between">
             <span>Import / Export</span>
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-1 sm:gap-2">
               <button
                 type="button"
                 onClick={() => fileRef.current?.click()}
-                className={`inline-flex items-center gap-2 rounded-xl border ${theme.border} px-3 py-2 ${theme.subtle}`}
+                className={`inline-flex items-center gap-1 sm:gap-2 rounded-xl border ${theme.border} px-2 sm:px-3 py-2 ${theme.subtle} text-xs sm:text-sm`}
               >
                 <Upload className="h-4 w-4" /> Import
               </button>
               <button
                 type="button"
                 onClick={onExport}
-                className={`inline-flex items-center gap-2 rounded-xl border ${theme.border} px-3 py-2 ${theme.subtle}`}
+                className={`inline-flex items-center gap-1 sm:gap-2 rounded-xl border ${theme.border} px-2 sm:px-3 py-2 ${theme.subtle} text-xs sm:text-sm`}
               >
                 <Download className="h-4 w-4" /> Export
               </button>
@@ -1105,7 +1105,7 @@ function SettingsModal({ onClose, onToggleTheme, isDark, onExport, onImport, onO
             <button
               type="button"
               onClick={onOpenShortcuts}
-              className={`inline-flex items-center gap-2 rounded-xl border ${theme.border} px-3 py-2 ${theme.subtle}`}
+              className={`inline-flex items-center gap-1 sm:gap-2 rounded-xl border ${theme.border} px-2 sm:px-3 py-2 ${theme.subtle} text-xs sm:text-sm`}
             >
               <HelpCircle className="h-4 w-4" /> Open
             </button>
@@ -1118,17 +1118,17 @@ function SettingsModal({ onClose, onToggleTheme, isDark, onExport, onImport, onO
 
 function ShortcutsModal({ onClose, theme = { surface: "bg-zinc-900", border: "border-zinc-800" } }: any) {
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4">
       <div className="absolute inset-0 bg-black/60" onClick={onClose} />
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         exit={{ opacity: 0, y: 10 }}
-        className={`relative w-full max-w-lg rounded-3xl border ${theme.border} ${theme.surface} p-4`}
+        className={`relative w-full max-w-lg rounded-3xl border ${theme.border} ${theme.surface} p-3 sm:p-4`}
       >
         <div className="flex items-center gap-2 mb-3">
           <h3 className="text-base font-semibold">Keyboard Shortcuts</h3>
-          <button type="button" onClick={onClose} className="ml-auto p-2 rounded-xl hover:bg-zinc-800">
+          <button type="button" onClick={onClose} className={`ml-auto p-2 rounded-xl ${theme.subtle || "hover:bg-zinc-800"}`}>
             ✕
           </button>
         </div>
@@ -1158,13 +1158,13 @@ function AddColumnCard({ adding, tempTitle, onChangeTitle, onStart, onAdd, onCan
       initial={{ opacity: 0, y: 6 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ type: "spring", stiffness: 120, damping: 18 }}
-      className={`snap-start shrink-0 min-w-0 rounded-3xl border ${theme.border} ${theme.surfaceAlt} backdrop-blur p-3 sm:p-4 flex flex-col justify-center items-stretch`}
+      className={`snap-start shrink-0 min-w-0 h-full rounded-3xl border ${theme.border} ${theme.surfaceAlt} backdrop-blur p-3 sm:p-4 flex flex-col justify-center items-stretch`}
     >
       {!adding ? (
         <button
           type="button"
           onClick={onStart}
-          className={`w-full h-full min-h-[120px] rounded-2xl border border-dashed ${theme.border} ${theme.subtle} text-sm flex items-center justify-center`}
+          className={`w-full flex-1 min-h-[120px] rounded-2xl border border-dashed ${theme.border} ${theme.subtle} text-sm flex items-center justify-center`}
         >
           <Plus className="h-4 w-4 mr-2" /> Add column
         </button>
