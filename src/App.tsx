@@ -40,7 +40,7 @@ import {
 import confetti from "canvas-confetti";
 
 // ------------------------------------------------------------
-// MINTY — Material‑ish Kanban To‑Do (Trello style)
+// TasksMint — Material‑ish Kanban To‑Do (Trello style)
 // Polished, responsive board with smooth dnd-kit drag/drop,
 // Material-esque surfaces, dark/light themes, filters,
 // labels, priorities, due dates, subtasks, import/export,
@@ -123,7 +123,7 @@ const defaultState = () => {
   const t2 = uid();
   const t3 = uid();
   return {
-    name: "Minty",
+    name: "TasksMint",
     columns: [
       { id: "backlog", title: "Backlog", taskIds: [t1] },
       { id: "inprogress", title: "In Progress", taskIds: [t2] },
@@ -191,9 +191,9 @@ const defaultState = () => {
   } as any;
 };
 
-const STORAGE_KEY = "minty_kanban_state_v1";
+const STORAGE_KEY = "tasksmint_kanban_state_v1";
 
-export default function MintyApp() {
+export default function TasksMintApp() {
   const [state, setState] = useState<any>(() => {
     const raw = localStorage.getItem(STORAGE_KEY);
     const base = raw ? JSON.parse(raw) : defaultState();
@@ -380,7 +380,7 @@ export default function MintyApp() {
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = `minty-export-${new Date().toISOString().slice(0, 10)}.json`;
+    a.download = `tasksmint-export-${new Date().toISOString().slice(0, 10)}.json`;
     a.click();
     URL.revokeObjectURL(url);
   };
@@ -660,7 +660,7 @@ export default function MintyApp() {
               <div className="absolute inset-0 bg-gradient-to-br from-emerald-500 via-teal-500 to-sky-500" />
               <Leaf className="absolute inset-0 m-auto h-4 w-4 text-white/90" />
             </div>
-            <h1 className="text-lg sm:text-xl font-semibold tracking-tight truncate">Minty</h1>
+            <h1 className="text-lg sm:text-xl font-semibold tracking-tight truncate">TasksMint</h1>
           </div>
 
           <div className="ml-auto flex items-center gap-1 sm:gap-2">
@@ -1495,9 +1495,9 @@ function DevTests() {
       const moved = moveItemBetween(["a","b"], ["c"], "a", "c");
       assert(moved.from.join(",") === "b" && moved.to.join(",") === "a,c".replace(/,/g, ",").split(",").join(","), "moveItemBetween basic move");
 
-      console.info("Minty self-tests passed:\n" + results.join("\n"));
+      console.info("TasksMint self-tests passed:\n" + results.join("\n"));
     } catch (e) {
-      console.error("Minty self-tests FAILED:", e);
+      console.error("TasksMint self-tests FAILED:", e);
     }
   }, []);
   return null;
