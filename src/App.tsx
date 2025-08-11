@@ -26,7 +26,6 @@ import {
   Tag,
   Filter,
   ChevronDown,
-  HelpCircle,
   AlertTriangle,
   Upload,
   Download,
@@ -66,6 +65,33 @@ const prettyDate = (iso?: string) => {
   return d.toLocaleDateString(undefined, { month: "short", day: "numeric" });
 };
 const isOverdue = (iso?: string) => iso && new Date(iso).setHours(23, 59, 59, 999) < Date.now();
+
+const DEFAULT_SHORTCUTS = {
+  newTask: "n",
+  newColumn: "shift+n",
+  search: "/",
+  toggleFilters: "shift+f",
+  moveTaskUp: "alt+shift+arrowup",
+  moveTaskDown: "alt+shift+arrowdown",
+  moveTaskLeft: "alt+shift+arrowleft",
+  moveTaskRight: "alt+shift+arrowright",
+  deleteTask: "delete",
+  completeTask: "space",
+  priority1: "shift+1",
+  priority2: "shift+2",
+  priority3: "shift+3",
+  priority4: "shift+4",
+  setDueDate: "shift+t",
+};
+
+function serializeCombo(e: { key: string; altKey: boolean; shiftKey: boolean; ctrlKey: boolean; metaKey: boolean }) {
+  const parts: string[] = [];
+  if (e.altKey) parts.push("alt");
+  if (e.shiftKey) parts.push("shift");
+  if (e.ctrlKey || e.metaKey) parts.push("ctrl");
+  parts.push(e.key.toLowerCase());
+  return parts.join("+");
+}
 
 // Pure helpers (also used in tests)
 function reorderWithin(ids: string[], activeId: string, overId: string | null) {
@@ -159,9 +185,9 @@ const defaultState = () => {
     addingColumn: false,
     renamingColumnId: null,
     tempTitle: "",
-    showShortcuts: false,
     showSettings: false,
     showFilters: false,
+    shortcuts: { ...DEFAULT_SHORTCUTS },
   } as any;
 };
 
@@ -170,7 +196,8 @@ const STORAGE_KEY = "minty_kanban_state_v1";
 export default function MintyApp() {
   const [state, setState] = useState<any>(() => {
     const raw = localStorage.getItem(STORAGE_KEY);
-    return raw ? JSON.parse(raw) : defaultState();
+    const base = raw ? JSON.parse(raw) : defaultState();
+    return { ...base, shortcuts: { ...DEFAULT_SHORTCUTS, ...(base.shortcuts || {}) } };
   });
 
   // Persist + theme
@@ -503,49 +530,112 @@ export default function MintyApp() {
       });
     };
 
+    const setPriorityShortcut = (p: string) => {
+      if (!state.selectedTaskId) return;
+      const id = state.selectedTaskId;
+      setState((s: any) => ({
+        ...s,
+        tasks: { ...s.tasks, [id]: { ...s.tasks[id], priority: p, updatedAt: Date.now() } },
+      }));
+    };
+
+    const setDueDateShortcut = () => {
+      if (!state.selectedTaskId) return;
+      const id = state.selectedTaskId;
+      const val = prompt("Due date (YYYY-MM-DD)") || "";
+      const iso = val ? new Date(val).toISOString() : "";
+      setState((s: any) => ({
+        ...s,
+        tasks: { ...s.tasks, [id]: { ...s.tasks[id], dueDate: iso, updatedAt: Date.now() } },
+      }));
+    };
+
     const onKey = (e: KeyboardEvent) => {
-      if (state.showTaskModal || state.showSettings || state.showShortcuts) return;
+      if (state.showTaskModal || state.showSettings) return;
       const tag = (e.target as HTMLElement).tagName;
       const inInput = ["INPUT", "TEXTAREA", "SELECT"].includes(tag);
-      const mod = e.metaKey || e.ctrlKey;
-      const key = e.key;
-      if (mod && key.toLowerCase() === "n") {
+      const combo = serializeCombo(e);
+      const sc = state.shortcuts;
+      if (combo === sc.newTask) {
         e.preventDefault();
-        e.shiftKey ? startAddColumn() : openNewTask();
+        openNewTask();
         return;
       }
-      if (mod && key.toLowerCase() === "f") {
+      if (combo === sc.newColumn) {
         e.preventDefault();
-        e.shiftKey
-          ? setState((s: any) => ({ ...s, showFilters: !s.showFilters }))
-          : document.getElementById("searchInput")?.focus();
+        startAddColumn();
+        return;
+      }
+      if (combo === sc.search) {
+        e.preventDefault();
+        document.getElementById("searchInput")?.focus();
+        return;
+      }
+      if (combo === sc.toggleFilters) {
+        e.preventDefault();
+        setState((s: any) => ({ ...s, showFilters: !s.showFilters }));
         return;
       }
       if (inInput) return;
-      if (!mod && ["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].includes(key)) {
+      if (combo === sc.moveTaskUp) {
         e.preventDefault();
-        navigate(key);
+        moveWithin("ArrowUp");
         return;
       }
-      if (mod && ["ArrowUp", "ArrowDown"].includes(key)) {
+      if (combo === sc.moveTaskDown) {
         e.preventDefault();
-        moveWithin(key);
+        moveWithin("ArrowDown");
         return;
       }
-      if (mod && ["ArrowLeft", "ArrowRight"].includes(key)) {
+      if (combo === sc.moveTaskLeft) {
         e.preventDefault();
-        moveAcross(key);
+        moveAcross("ArrowLeft");
         return;
       }
-      if (key === " " && !mod) {
+      if (combo === sc.moveTaskRight) {
+        e.preventDefault();
+        moveAcross("ArrowRight");
+        return;
+      }
+      if (["arrowup", "arrowdown", "arrowleft", "arrowright"].includes(e.key.toLowerCase())) {
+        e.preventDefault();
+        navigate(e.key);
+        return;
+      }
+      if (combo === sc.completeTask) {
         e.preventDefault();
         toggleComplete();
         return;
       }
-      if ((key === "Delete" || (mod && key === "Backspace")) && state.selectedTaskId) {
+      if (combo === sc.deleteTask && state.selectedTaskId) {
         e.preventDefault();
         deleteTask(state.selectedTaskId);
         setState((s: any) => ({ ...s, selectedTaskId: null }));
+        return;
+      }
+      if (combo === sc.priority1) {
+        e.preventDefault();
+        setPriorityShortcut("Urgent");
+        return;
+      }
+      if (combo === sc.priority2) {
+        e.preventDefault();
+        setPriorityShortcut("High");
+        return;
+      }
+      if (combo === sc.priority3) {
+        e.preventDefault();
+        setPriorityShortcut("Medium");
+        return;
+      }
+      if (combo === sc.priority4) {
+        e.preventDefault();
+        setPriorityShortcut("Low");
+        return;
+      }
+      if (combo === sc.setDueDate) {
+        e.preventDefault();
+        setDueDateShortcut();
       }
     };
     window.addEventListener("keydown", onKey);
@@ -793,14 +883,14 @@ export default function MintyApp() {
           isDark={isDark}
           onExport={exportJSON}
           onImport={importJSON}
-          onOpenShortcuts={() => setState((s: any) => ({ ...s, showShortcuts: true, showSettings: false }))}
+          shortcuts={state.shortcuts}
+          onChangeShortcut={(k: string, v: string) =>
+            setState((s: any) => ({ ...s, shortcuts: { ...s.shortcuts, [k]: v } }))
+          }
           theme={{ surface, border, input, subtle }}
         />
       )}
 
-      {state.showShortcuts && (
-        <ShortcutsModal onClose={() => setState((s: any) => ({ ...s, showShortcuts: false }))} theme={{ surface, border }} />
-      )}
 
       {/* Dev Tests */}
       <DevTests />
@@ -900,6 +990,9 @@ function SortableCard({ id, task, onEdit, theme, selected, onSelect }: any) {
       style={style}
       onClick={handleCardClick}
       onFocus={onSelect}
+      onKeyDown={(e) => {
+        if (e.key === "Enter") handleCardClick(e as any);
+      }}
       tabIndex={0}
       {...attributes}
       {...listeners}
@@ -972,9 +1065,24 @@ function TaskModal({ onClose, onSave, state, editingTaskId, allLabels, onDelete,
   const [newSubtask, setNewSubtask] = useState<string>("");
   const [columnId, setColumnId] = useState(editingTaskId?.columnId || state.columns[0]?.id);
 
-  // Close on ESC, Submit on Enter (except textarea)
+  // Keyboard shortcuts
   useEffect(() => {
+    const sc = state.shortcuts;
     const onKey = (e: KeyboardEvent) => {
+      const combo = serializeCombo(e);
+      if (combo === sc.priority1) setPriority("Urgent");
+      if (combo === sc.priority2) setPriority("High");
+      if (combo === sc.priority3) setPriority("Medium");
+      if (combo === sc.priority4) setPriority("Low");
+      if (combo === sc.setDueDate) {
+        e.preventDefault();
+        (document.getElementById("dueInput") as HTMLInputElement)?.focus();
+      }
+      if (combo === sc.deleteTask && isEdit && task) {
+        e.preventDefault();
+        onDelete(task.id);
+        onClose();
+      }
       if (e.key === "Escape") onClose();
       if (e.key === "Enter" && (e.target as HTMLElement)?.tagName !== "TEXTAREA") {
         e.preventDefault();
@@ -983,7 +1091,7 @@ function TaskModal({ onClose, onSave, state, editingTaskId, allLabels, onDelete,
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [title, description, priority, dueDate, labels, subtasks, columnId]);
+  }, [title, description, priority, dueDate, labels, subtasks, columnId, state.shortcuts, isEdit, task]);
 
   const handleSave = () =>
     onSave({ title, description, priority, dueDate, labels, subtasks }, columnId, isEdit ? task.id : undefined);
@@ -1128,6 +1236,7 @@ function TaskModal({ onClose, onSave, state, editingTaskId, allLabels, onDelete,
             <div>
               <div className={`text-xs ${theme.muted} mb-1`}>Due date</div>
               <input
+                id="dueInput"
                 type="date"
                 value={dueDate}
                 onChange={(e) => setDueDate(e.target.value)}
@@ -1202,8 +1311,25 @@ function TaskModal({ onClose, onSave, state, editingTaskId, allLabels, onDelete,
   );
 }
 
-function SettingsModal({ onClose, onToggleTheme, isDark, onExport, onImport, onOpenShortcuts, theme }: any) {
+function SettingsModal({ onClose, onToggleTheme, isDark, onExport, onImport, shortcuts, onChangeShortcut, theme }: any) {
   const fileRef = useRef<HTMLInputElement | null>(null);
+  const shortcutItems = [
+    { key: "newTask", label: "New task" },
+    { key: "newColumn", label: "New list/column" },
+    { key: "search", label: "Focus search" },
+    { key: "toggleFilters", label: "Toggle filters panel" },
+    { key: "moveTaskUp", label: "Move task within column ↑" },
+    { key: "moveTaskDown", label: "Move task within column ↓" },
+    { key: "moveTaskLeft", label: "Move task across columns ←" },
+    { key: "moveTaskRight", label: "Move task across columns →" },
+    { key: "deleteTask", label: "Delete task" },
+    { key: "completeTask", label: "Mark completed" },
+    { key: "priority1", label: "Set priority Urgent" },
+    { key: "priority2", label: "Set priority High" },
+    { key: "priority3", label: "Set priority Medium" },
+    { key: "priority4", label: "Set priority Low" },
+    { key: "setDueDate", label: "Set due date" },
+  ];
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4">
       <div className="absolute inset-0 bg-black/60" onClick={onClose} />
@@ -1219,7 +1345,7 @@ function SettingsModal({ onClose, onToggleTheme, isDark, onExport, onImport, onO
             ✕
           </button>
         </div>
-        <div className="space-y-3 text-sm">
+        <div className="space-y-3 text-sm max-h-[70vh] overflow-y-auto pr-1">
           <div className="flex items-center justify-between">
             <span>Theme</span>
             <button
@@ -1258,15 +1384,20 @@ function SettingsModal({ onClose, onToggleTheme, isDark, onExport, onImport, onO
             </div>
           </div>
 
-          <div className="flex items-center justify-between">
-            <span>Keyboard shortcuts</span>
-            <button
-              type="button"
-              onClick={onOpenShortcuts}
-              className={`inline-flex items-center gap-1 sm:gap-2 rounded-xl border ${theme.border} px-2 sm:px-3 py-2 ${theme.subtle} text-xs sm:text-sm`}
-            >
-              <HelpCircle className="h-4 w-4" /> Open
-            </button>
+          <div>
+            <div className="mb-1">Keyboard shortcuts</div>
+            <div className="space-y-2">
+              {shortcutItems.map((it) => (
+                <div key={it.key} className="flex items-center justify-between gap-2">
+                  <span>{it.label}</span>
+                  <ShortcutInput
+                    value={shortcuts[it.key]}
+                    onChange={(v: string) => onChangeShortcut(it.key, v)}
+                    theme={theme}
+                  />
+                </div>
+              ))}
+            </div>
           </div>
         </div>
       </motion.div>
@@ -1274,38 +1405,18 @@ function SettingsModal({ onClose, onToggleTheme, isDark, onExport, onImport, onO
   );
 }
 
-function ShortcutsModal({ onClose, theme = { surface: "bg-zinc-900", border: "border-zinc-800" } }: any) {
+function ShortcutInput({ value, onChange, theme }: any) {
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4">
-      <div className="absolute inset-0 bg-black/60" onClick={onClose} />
-      <motion.div
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        exit={{ opacity: 0, y: 10 }}
-        className={`relative w-full max-w-lg rounded-3xl border ${theme.border} ${theme.surface} p-3 sm:p-4`}
-      >
-        <div className="flex items-center gap-2 mb-3">
-          <h3 className="text-base font-semibold">Keyboard Shortcuts</h3>
-          <button type="button" onClick={onClose} className={`ml-auto p-2 rounded-xl ${theme.subtle || "hover:bg-zinc-800"}`}>
-            ✕
-          </button>
-        </div>
-        <div className="space-y-2 text-sm">
-          <div className="flex items-center justify-between">
-            <span>New task</span>
-            <kbd className="px-2 py-1 rounded border">N</kbd>
-          </div>
-          <div className="flex items-center justify-between">
-            <span>Search</span>
-            <kbd className="px-2 py-1 rounded border">/</kbd>
-          </div>
-          <div className="flex items-center justify-between">
-            <span>Open shortcuts</span>
-            <kbd className="px-2 py-1 rounded border">?</kbd>
-          </div>
-        </div>
-      </motion.div>
-    </div>
+    <input
+      readOnly
+      value={value}
+      onKeyDown={(e) => {
+        e.preventDefault();
+        const combo = serializeCombo(e.nativeEvent as any);
+        onChange(combo);
+      }}
+      className={`w-32 text-xs px-2 py-1 rounded-xl border ${theme.border} ${theme.surface}`}
+    />
   );
 }
 
