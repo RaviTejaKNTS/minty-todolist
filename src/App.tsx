@@ -14,6 +14,7 @@ import {
   useSortable,
   arrayMove,
   verticalListSortingStrategy,
+  horizontalListSortingStrategy,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { motion, AnimatePresence } from "framer-motion";
@@ -277,6 +278,7 @@ export default function MintyApp() {
   const onDragOver = (event: any) => {
     const { active, over } = event;
     if (!over) return;
+    if (!state.tasks[active.id]) return; // only handle task drag preview
     moveBetweenPreview(active.id, over.id);
   };
 
@@ -285,13 +287,29 @@ export default function MintyApp() {
     setState((s: any) => ({ ...s, activeId: null }));
     if (!over) return;
 
-    const activeContainer = findContainer(active.id);
-    const overContainer = findContainer(over.id);
+    const activeId = active.id;
+    const overId = over.id;
+
+    const activeIsColumn = state.columns.some((c: any) => c.id === activeId);
+    const overIsColumn = state.columns.some((c: any) => c.id === overId);
+
+    if (activeIsColumn && overIsColumn) {
+      if (activeId !== overId) {
+        const oldIndex = state.columns.findIndex((c: any) => c.id === activeId);
+        const newIndex = state.columns.findIndex((c: any) => c.id === overId);
+        const newColumns = arrayMove(state.columns, oldIndex, newIndex);
+        setState((s: any) => ({ ...s, columns: newColumns }));
+      }
+      return;
+    }
+
+    const activeContainer = findContainer(activeId);
+    const overContainer = findContainer(overId);
     if (!activeContainer || !overContainer) return;
 
     if (activeContainer === overContainer) {
       const col = state.columns.find((c: any) => c.id === activeContainer);
-      const newIds = reorderWithin(col.taskIds, active.id, over.id);
+      const newIds = reorderWithin(col.taskIds, activeId, overId);
       const newColumns = state.columns.map((c: any) => (c.id === col.id ? { ...c, taskIds: newIds } : c));
       setState((s: any) => ({ ...s, columns: newColumns }));
       return;
@@ -300,7 +318,7 @@ export default function MintyApp() {
     // finalize cross-column (also set updated time + confetti)
     const toCol = state.columns.find((c: any) => c.id === overContainer);
     const fromCol = state.columns.find((c: any) => c.id === activeContainer);
-    const moved = moveItemBetween(fromCol.taskIds, toCol.taskIds, active.id, over.id);
+    const moved = moveItemBetween(fromCol.taskIds, toCol.taskIds, activeId, overId);
     let newColumns = state.columns.map((c: any) =>
       c.id === fromCol.id ? { ...c, taskIds: moved.from } : c.id === toCol.id ? { ...c, taskIds: moved.to } : c
     );
@@ -311,7 +329,7 @@ export default function MintyApp() {
     }
     setState((s: any) => {
       const tasks = { ...s.tasks } as any;
-      if (tasks[active.id]) tasks[active.id].updatedAt = Date.now();
+      if (tasks[activeId]) tasks[activeId].updatedAt = Date.now();
       return { ...s, tasks, columns: newColumns };
     });
   };
@@ -716,26 +734,28 @@ export default function MintyApp() {
           onDragCancel={() => setState((s: any) => ({ ...s, activeId: null }))}
         >
           <div className="h-full grid grid-flow-col auto-cols-[minmax(280px,90vw)] sm:auto-cols-[minmax(300px,320px)] lg:auto-cols-[minmax(320px,360px)] gap-3 sm:gap-4 overflow-x-auto overflow-y-hidden pb-16 sm:pb-20 snap-x snap-mandatory touch-pan-x">
-            {state.columns.map((col: any) => (
-              <Column
-                key={col.id}
-                col={col}
-                tasks={state.tasks}
-                ids={sortTasks(filteredTaskIds(col))}
-                theme={{ surface, surfaceAlt, border, subtle, muted }}
-                onOpenNew={() => openNewTask(col.id)}
-                onOpenEdit={openEditTask}
-                onDeleteColumn={deleteColumn}
-                onStartRename={() => startRenameColumn(col.id, col.title)}
-                onCancelRename={cancelRenameColumn}
-                renaming={state.renamingColumnId === col.id}
-                tempTitle={state.tempTitle}
-                setTempTitle={(v: string) => setState((s: any) => ({ ...s, tempTitle: v }))}
-                onCommitRename={() => commitRenameColumn(col.id)}
-                selectedTaskId={state.selectedTaskId}
-                setSelectedTaskId={(id: string) => setState((s: any) => ({ ...s, selectedTaskId: id }))}
-              />
-            ))}
+            <SortableContext items={state.columns.map((c: any) => c.id)} strategy={horizontalListSortingStrategy}>
+              {state.columns.map((col: any) => (
+                <Column
+                  key={col.id}
+                  col={col}
+                  tasks={state.tasks}
+                  ids={sortTasks(filteredTaskIds(col))}
+                  theme={{ surface, surfaceAlt, border, subtle, muted }}
+                  onOpenNew={() => openNewTask(col.id)}
+                  onOpenEdit={openEditTask}
+                  onDeleteColumn={deleteColumn}
+                  onStartRename={() => startRenameColumn(col.id, col.title)}
+                  onCancelRename={cancelRenameColumn}
+                  renaming={state.renamingColumnId === col.id}
+                  tempTitle={state.tempTitle}
+                  setTempTitle={(v: string) => setState((s: any) => ({ ...s, tempTitle: v }))}
+                  onCommitRename={() => commitRenameColumn(col.id)}
+                  selectedTaskId={state.selectedTaskId}
+                  setSelectedTaskId={(id: string) => setState((s: any) => ({ ...s, selectedTaskId: id }))}
+                />
+              ))}
+            </SortableContext>
 
             {/* Add Column at end */}
             <AddColumnCard
@@ -809,16 +829,27 @@ export default function MintyApp() {
 }
 
 function Column({ col, tasks, ids, theme, onOpenNew, onOpenEdit, onDeleteColumn, onStartRename, onCancelRename, renaming, tempTitle, setTempTitle, onCommitRename, selectedTaskId, setSelectedTaskId }: any) {
-  // make the whole column body droppable so dropping on empty space works
-  const { setNodeRef } = useDroppable({ id: col.id });
+  const {
+    attributes,
+    listeners,
+    setNodeRef: setSortableRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({ id: col.id });
+  // make the column droppable so dropping on empty space works
+  const { setNodeRef: setDroppableRef } = useDroppable({ id: col.id });
+  const style = { transform: CSS.Transform.toString(transform), transition } as React.CSSProperties;
 
   return (
     <motion.div
       layout
+      ref={setSortableRef}
+      style={style}
       initial={{ opacity: 0, y: 6 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ type: "spring", stiffness: 120, damping: 18 }}
-      className={`snap-start shrink-0 min-w-0 h-full rounded-3xl border ${theme.border} ${theme.surfaceAlt} backdrop-blur p-3 sm:p-4 flex flex-col relative overflow-hidden`}
+      className={`snap-start shrink-0 min-w-0 h-full rounded-3xl border ${theme.border} ${theme.surfaceAlt} backdrop-blur p-3 sm:p-4 flex flex-col relative overflow-hidden ${isDragging ? "ring-2 ring-emerald-400/40" : ""}`}
     >
       <div className="flex items-center gap-2 mb-3 shrink-0">
         {renaming ? (
@@ -828,8 +859,8 @@ function Column({ col, tasks, ids, theme, onOpenNew, onOpenEdit, onDeleteColumn,
               value={tempTitle}
               onChange={(e) => setTempTitle(e.target.value)}
               onKeyDown={(e) => {
-                if (e.key === 'Enter') onCommitRename();
-                if (e.key === 'Escape') onCancelRename();
+                if (e.key === "Enter") onCommitRename();
+                if (e.key === "Escape") onCancelRename();
               }}
               className="flex-1 rounded-xl px-2.5 py-1 text-sm border border-emerald-500/50 bg-emerald-500/10"
             />
@@ -845,13 +876,26 @@ function Column({ col, tasks, ids, theme, onOpenNew, onOpenEdit, onDeleteColumn,
             <span className="text-sm font-medium">{col.title}</span>
             <span className={`ml-1 text-xs ${theme.muted}`}>{ids.length}</span>
             <div className="ml-auto flex items-center gap-1">
+              <span
+                className={`p-1 rounded-xl ${theme.subtle}`}
+                {...attributes}
+                {...listeners}
+                title="Drag column"
+              >
+                <GripVertical className="h-4 w-4" />
+              </span>
               <button type="button" onClick={onOpenNew} className={`p-1 rounded-xl ${theme.subtle}`} title="New task in column">
                 <Plus className="h-4 w-4" />
               </button>
               <button type="button" onClick={onStartRename} className={`p-1 rounded-xl ${theme.subtle}`} title="Rename column">
                 <Edit className="h-4 w-4" />
               </button>
-              <button type="button" onClick={() => onDeleteColumn(col.id)} className={`p-1 rounded-xl ${theme.subtle}`} title="Delete column">
+              <button
+                type="button"
+                onClick={() => onDeleteColumn(col.id)}
+                className={`p-1 rounded-xl ${theme.subtle}`}
+                title="Delete column"
+              >
                 <Trash2 className="h-4 w-4" />
               </button>
             </div>
@@ -861,7 +905,10 @@ function Column({ col, tasks, ids, theme, onOpenNew, onOpenEdit, onDeleteColumn,
 
       {/* Sortable list for this column */}
       <SortableContext items={ids} strategy={verticalListSortingStrategy}>
-        <div ref={setNodeRef} className={`flex-1 min-h-[48px] rounded-2xl border border-dashed ${theme.border} p-2 space-y-2 overflow-y-auto overflow-x-hidden`}>
+        <div
+          ref={setDroppableRef}
+          className={`flex-1 min-h-[48px] rounded-2xl border border-dashed ${theme.border} p-2 space-y-2 overflow-y-auto overflow-x-hidden`}
+        >
           <AnimatePresence initial={false}>
             {ids.map((taskId: string) => (
               <SortableCard
