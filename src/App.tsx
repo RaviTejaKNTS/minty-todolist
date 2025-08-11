@@ -39,6 +39,7 @@ import {
   Check,
 } from "lucide-react";
 import confetti from "canvas-confetti";
+import { useKeyboardShortcuts } from "./hooks/useKeyboardShortcuts";
 
 // ------------------------------------------------------------
 // MINTY — Material‑ish Kanban To‑Do (Trello style)
@@ -170,12 +171,259 @@ export default function MintyApp() {
     const raw = localStorage.getItem(STORAGE_KEY);
     return raw ? JSON.parse(raw) : defaultState();
   });
+  const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
+  const [showFiltersDropdown, setShowFiltersDropdown] = useState(false);
+  const { registerShortcut, setContext, manager } = useKeyboardShortcuts();
 
   // Persist + theme
   useEffect(() => {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
     document.documentElement.classList.toggle("dark", state.theme === "dark");
   }, [state]);
+
+  // Register global keyboard shortcuts
+  useEffect(() => {
+    const unregisterShortcuts: (() => void)[] = [];
+
+    // New task: Ctrl+N / Cmd+N
+    unregisterShortcuts.push(registerShortcut('new-task', {
+      key: 'n',
+      ctrl: true,
+      description: 'Create new task',
+      category: 'global'
+    }, () => openNewTask()));
+
+    // Focus search: Ctrl+F / Cmd+F
+    unregisterShortcuts.push(registerShortcut('focus-search', {
+      key: 'f',
+      ctrl: true,
+      description: 'Focus search',
+      category: 'global'
+    }, () => {
+      const searchInput = document.getElementById('searchInput') as HTMLInputElement;
+      if (searchInput) {
+        searchInput.focus();
+        searchInput.select();
+      }
+    }));
+
+    // Toggle filters: Ctrl+Shift+F / Cmd+Shift+F
+    unregisterShortcuts.push(registerShortcut('toggle-filters', {
+      key: 'f',
+      ctrl: true,
+      shift: true,
+      description: 'Toggle filters',
+      category: 'global'
+    }, () => setShowFiltersDropdown(prev => !prev)));
+
+    // New column: Ctrl+Shift+N / Cmd+Shift+N
+    unregisterShortcuts.push(registerShortcut('new-column', {
+      key: 'n',
+      ctrl: true,
+      shift: true,
+      description: 'Create new column',
+      category: 'global'
+    }, () => startAddColumn()));
+
+    // Navigate tasks: ArrowUp/ArrowDown
+    unregisterShortcuts.push(registerShortcut('navigate-up', {
+      key: 'up',
+      description: 'Navigate to previous task',
+      category: 'global'
+    }, () => navigateTask('up')));
+
+    unregisterShortcuts.push(registerShortcut('navigate-down', {
+      key: 'down',
+      description: 'Navigate to next task',
+      category: 'global'
+    }, () => navigateTask('down')));
+
+    // Move task up/down: Ctrl+ArrowUp/ArrowDown
+    unregisterShortcuts.push(registerShortcut('move-task-up', {
+      key: 'up',
+      ctrl: true,
+      description: 'Move task up',
+      category: 'global'
+    }, () => moveSelectedTask('up')));
+
+    unregisterShortcuts.push(registerShortcut('move-task-down', {
+      key: 'down',
+      ctrl: true,
+      description: 'Move task down',
+      category: 'global'
+    }, () => moveSelectedTask('down')));
+
+    // Move task across columns: Ctrl+ArrowLeft/ArrowRight
+    unregisterShortcuts.push(registerShortcut('move-task-left', {
+      key: 'left',
+      ctrl: true,
+      description: 'Move task to previous column',
+      category: 'global'
+    }, () => moveSelectedTask('left')));
+
+    unregisterShortcuts.push(registerShortcut('move-task-right', {
+      key: 'right',
+      ctrl: true,
+      description: 'Move task to next column',
+      category: 'global'
+    }, () => moveSelectedTask('right')));
+
+    // Toggle completion: Space
+    unregisterShortcuts.push(registerShortcut('toggle-completion', {
+      key: 'space',
+      description: 'Toggle task completion',
+      category: 'global'
+    }, () => toggleTaskCompletion()));
+
+    // Delete selected task: Delete
+    unregisterShortcuts.push(registerShortcut('delete-task', {
+      key: 'delete',
+      description: 'Delete selected task',
+      category: 'global'
+    }, () => deleteSelectedTask()));
+
+    return () => {
+      unregisterShortcuts.forEach(unregister => unregister());
+    };
+  }, [selectedTaskId, state.columns, state.tasks]);
+
+  // Task navigation and manipulation functions
+  const getAllTaskIds = () => {
+    return state.columns.flatMap((col: any) => sortTasks(filteredTaskIds(col)));
+  };
+
+  const navigateTask = (direction: 'up' | 'down') => {
+    const allTaskIds = getAllTaskIds();
+    if (allTaskIds.length === 0) return;
+
+    if (!selectedTaskId) {
+      setSelectedTaskId(allTaskIds[0]);
+      return;
+    }
+
+    const currentIndex = allTaskIds.indexOf(selectedTaskId);
+    if (currentIndex === -1) {
+      setSelectedTaskId(allTaskIds[0]);
+      return;
+    }
+
+    let newIndex;
+    if (direction === 'up') {
+      newIndex = currentIndex > 0 ? currentIndex - 1 : allTaskIds.length - 1;
+    } else {
+      newIndex = currentIndex < allTaskIds.length - 1 ? currentIndex + 1 : 0;
+    }
+
+    setSelectedTaskId(allTaskIds[newIndex]);
+  };
+
+  const moveSelectedTask = (direction: 'up' | 'down' | 'left' | 'right') => {
+    if (!selectedTaskId) return;
+
+    const currentColumn = state.columns.find((col: any) => col.taskIds.includes(selectedTaskId));
+    if (!currentColumn) return;
+
+    if (direction === 'up' || direction === 'down') {
+      // Move within column
+      const taskIds = [...currentColumn.taskIds];
+      const currentIndex = taskIds.indexOf(selectedTaskId);
+      if (currentIndex === -1) return;
+
+      const newIndex = direction === 'up' 
+        ? Math.max(0, currentIndex - 1)
+        : Math.min(taskIds.length - 1, currentIndex + 1);
+
+      if (newIndex !== currentIndex) {
+        const newTaskIds = arrayMove(taskIds, currentIndex, newIndex);
+        setState((s: any) => ({
+          ...s,
+          columns: s.columns.map((col: any) => 
+            col.id === currentColumn.id ? { ...col, taskIds: newTaskIds } : col
+          )
+        }));
+      }
+    } else {
+      // Move across columns
+      const currentColumnIndex = state.columns.findIndex((col: any) => col.id === currentColumn.id);
+      const targetColumnIndex = direction === 'left' 
+        ? Math.max(0, currentColumnIndex - 1)
+        : Math.min(state.columns.length - 1, currentColumnIndex + 1);
+
+      if (targetColumnIndex !== currentColumnIndex) {
+        const targetColumn = state.columns[targetColumnIndex];
+        const fromTaskIds = currentColumn.taskIds.filter((id: string) => id !== selectedTaskId);
+        const toTaskIds = [selectedTaskId, ...targetColumn.taskIds];
+
+        setState((s: any) => ({
+          ...s,
+          columns: s.columns.map((col: any) => {
+            if (col.id === currentColumn.id) return { ...col, taskIds: fromTaskIds };
+            if (col.id === targetColumn.id) return { ...col, taskIds: toTaskIds };
+            return col;
+          }),
+          tasks: {
+            ...s.tasks,
+            [selectedTaskId]: { ...s.tasks[selectedTaskId], updatedAt: Date.now() }
+          }
+        }));
+      }
+    }
+  };
+
+  const toggleTaskCompletion = () => {
+    if (!selectedTaskId) return;
+    
+    // Find if task is in "Done" column
+    const doneColumn = state.columns.find((col: any) => col.title.toLowerCase() === 'done');
+    const currentColumn = state.columns.find((col: any) => col.taskIds.includes(selectedTaskId));
+    
+    if (!currentColumn || !doneColumn) return;
+
+    if (currentColumn.id === doneColumn.id) {
+      // Move back to first column (backlog)
+      const backlogColumn = state.columns[0];
+      if (backlogColumn) {
+        const fromTaskIds = currentColumn.taskIds.filter((id: string) => id !== selectedTaskId);
+        const toTaskIds = [selectedTaskId, ...backlogColumn.taskIds];
+
+        setState((s: any) => ({
+          ...s,
+          columns: s.columns.map((col: any) => {
+            if (col.id === currentColumn.id) return { ...col, taskIds: fromTaskIds };
+            if (col.id === backlogColumn.id) return { ...col, taskIds: toTaskIds };
+            return col;
+          })
+        }));
+      }
+    } else {
+      // Move to done column
+      const fromTaskIds = currentColumn.taskIds.filter((id: string) => id !== selectedTaskId);
+      const toTaskIds = [selectedTaskId, ...doneColumn.taskIds];
+
+      setState((s: any) => ({
+        ...s,
+        columns: s.columns.map((col: any) => {
+          if (col.id === currentColumn.id) return { ...col, taskIds: fromTaskIds };
+          if (col.id === doneColumn.id) return { ...col, taskIds: toTaskIds };
+          return col;
+        })
+      }));
+
+      // Trigger confetti for completion
+      try {
+        confetti({ particleCount: 110, spread: 70, origin: { y: 0.15 } });
+      } catch {}
+    }
+  };
+
+  const deleteSelectedTask = () => {
+    if (!selectedTaskId) return;
+    
+    if (confirm('Delete this task?')) {
+      deleteTask(selectedTaskId);
+      setSelectedTaskId(null);
+    }
+  };
 
   // DnD sensors — Trello-like: click starts drag when you move > 6px
   const sensors = useSensors(
@@ -447,12 +695,13 @@ export default function MintyApp() {
 
             {/* Filters & Sort remain in header */}
             <div className="hidden lg:flex items-center gap-2">
-              <div className="relative group">
+              <div className="relative">
                 <button type="button" className={`inline-flex items-center gap-2 rounded-2xl border ${border} ${surface} px-3 py-2 text-sm ${subtle}`}>
                   <Filter className="h-4 w-4" /> Filters
                   <ChevronDown className="h-4 w-4 opacity-80" />
                 </button>
-                <div className={`absolute right-0 mt-2 hidden group-hover:block w-[280px] lg:w-[320px] rounded-2xl border ${border} ${surface} p-3 shadow-xl z-50`}>
+                {showFiltersDropdown && (
+                  <div className={`absolute right-0 mt-2 w-[280px] lg:w-[320px] rounded-2xl border ${border} ${surface} p-3 shadow-xl z-50`}>
                   <div className="space-y-3">
                     <div>
                       <div className={`text-xs uppercase ${muted} mb-1`}>Priorities</div>
@@ -514,7 +763,7 @@ export default function MintyApp() {
                       </div>
                     </div>
                   </div>
-                </div>
+                )}
               </div>
 
               <div className="hidden lg:flex items-center gap-2">
@@ -584,6 +833,8 @@ export default function MintyApp() {
                 tempTitle={state.tempTitle}
                 setTempTitle={(v: string) => setState((s: any) => ({ ...s, tempTitle: v }))}
                 onCommitRename={() => commitRenameColumn(col.id)}
+                selectedTaskId={selectedTaskId}
+                onSelectTask={setSelectedTaskId}
               />
             ))}
 
@@ -626,12 +877,14 @@ export default function MintyApp() {
           onSave={(payload: any, columnId: string, taskId?: string) => {
             createOrUpdateTask(payload, columnId, taskId || null);
             setState((s: any) => ({ ...s, showTaskModal: false }));
+            setContext('global');
           }}
           state={state}
           editingTaskId={state.editingTaskId}
           allLabels={allLabels}
           onDelete={deleteTask}
           theme={{ surface, border, input, muted, subtle }}
+          setContext={setContext}
         />
       )}
 
@@ -649,7 +902,12 @@ export default function MintyApp() {
       )}
 
       {state.showShortcuts && (
-        <ShortcutsModal onClose={() => setState((s: any) => ({ ...s, showShortcuts: false }))} theme={{ surface, border }} />
+        <ShortcutsModal 
+          onClose={() => setState((s: any) => ({ ...s, showShortcuts: false }))} 
+          theme={{ surface, border }} 
+          shortcuts={manager.getShortcuts()}
+          getShortcutDisplay={manager.getShortcutDisplay.bind(manager)}
+        />
       )}
 
       {/* Dev Tests */}
@@ -658,7 +916,7 @@ export default function MintyApp() {
   );
 }
 
-function Column({ col, tasks, ids, theme, onOpenNew, onOpenEdit, onDeleteColumn, onStartRename, onCancelRename, renaming, tempTitle, setTempTitle, onCommitRename }: any) {
+function Column({ col, tasks, ids, theme, onOpenNew, onOpenEdit, onDeleteColumn, onStartRename, onCancelRename, renaming, tempTitle, setTempTitle, onCommitRename, selectedTaskId, onSelectTask }: any) {
   // make the whole column body droppable so dropping on empty space works
   const { setNodeRef } = useDroppable({ id: col.id });
 
@@ -720,6 +978,8 @@ function Column({ col, tasks, ids, theme, onOpenNew, onOpenEdit, onDeleteColumn,
                 task={tasks[taskId]}
                 onEdit={() => onOpenEdit(taskId)}
                 theme={theme}
+                isSelected={selectedTaskId === taskId}
+                onSelect={() => onSelectTask(taskId)}
               />
             ))}
           </AnimatePresence>
@@ -729,13 +989,16 @@ function Column({ col, tasks, ids, theme, onOpenNew, onOpenEdit, onDeleteColumn,
   );
 }
 
-function SortableCard({ id, task, onEdit, theme }: any) {
+function SortableCard({ id, task, onEdit, theme, isSelected, onSelect }: any) {
   // Trello-like: click opens; drag after moving >6px
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id });
   const style = { transform: CSS.Transform.toString(transform), transition } as React.CSSProperties;
 
   const handleCardClick: React.MouseEventHandler = () => {
-    if (!isDragging) onEdit();
+    if (!isDragging) {
+      onSelect();
+      onEdit();
+    }
   };
 
   return (
@@ -749,7 +1012,10 @@ function SortableCard({ id, task, onEdit, theme }: any) {
       initial={{ opacity: 0, y: 6 }}
       animate={{ opacity: 1, y: 0 }}
       exit={{ opacity: 0, scale: 0.98 }}
-      className={`relative rounded-2xl border ${theme.border} ${theme.surface} p-3 shadow-sm select-none ${isDragging ? "ring-2 ring-emerald-400/40" : ""}`}
+      className={`relative rounded-2xl border ${theme.border} ${theme.surface} p-3 shadow-sm select-none ${
+        isDragging ? "ring-2 ring-emerald-400/40" : 
+        isSelected ? "ring-2 ring-blue-400/60 bg-blue-50/50 dark:bg-blue-900/20" : ""
+      }`}
     >
       <div className="flex items-start gap-2">
         <div className="text-left flex-1">
@@ -802,7 +1068,7 @@ function CardItem({ task, readOnly = false, theme = { muted: "text-zinc-400" } }
   );
 }
 
-function TaskModal({ onClose, onSave, state, editingTaskId, allLabels, onDelete, theme }: any) {
+function TaskModal({ onClose, onSave, state, editingTaskId, allLabels, onDelete, theme, setContext }: any) {
   const isEdit = Boolean(editingTaskId?.taskId);
   const task = isEdit ? state.tasks[editingTaskId.taskId] : null;
   const [title, setTitle] = useState(task?.title || "");
@@ -813,6 +1079,12 @@ function TaskModal({ onClose, onSave, state, editingTaskId, allLabels, onDelete,
   const [subtasks, setSubtasks] = useState<any[]>(task?.subtasks || []);
   const [newSubtask, setNewSubtask] = useState<string>("");
   const [columnId, setColumnId] = useState(editingTaskId?.columnId || state.columns[0]?.id);
+
+  // Set editor context when modal opens
+  useEffect(() => {
+    setContext('editor');
+    return () => setContext('global');
+  }, [setContext]);
 
   // Close on ESC, Submit on Enter (except textarea)
   useEffect(() => {
@@ -861,6 +1133,7 @@ function TaskModal({ onClose, onSave, state, editingTaskId, allLabels, onDelete,
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-3">
           <div className="lg:col-span-2 space-y-3">
             <input
+              tabIndex={1}
               autoFocus
               value={title}
               onChange={(e) => setTitle(e.target.value)}
@@ -868,6 +1141,7 @@ function TaskModal({ onClose, onSave, state, editingTaskId, allLabels, onDelete,
               className={`w-full rounded-2xl ${theme.input} px-3 py-2 text-sm focus:outline-none`}
             />
             <textarea
+              tabIndex={2}
               value={description}
               onChange={(e) => setDescription(e.target.value)}
               placeholder="Description"
@@ -913,6 +1187,8 @@ function TaskModal({ onClose, onSave, state, editingTaskId, allLabels, onDelete,
                 {/* Always-visible add field */}
                 <div className="flex items-center gap-2">
                   <input
+                    tabIndex={20}
+                    tabIndex={10 + i}
                     value={newSubtask}
                     onChange={(e) => setNewSubtask(e.target.value)}
                     onKeyDown={(e) => {
@@ -925,6 +1201,7 @@ function TaskModal({ onClose, onSave, state, editingTaskId, allLabels, onDelete,
                     className={`flex-1 rounded-xl ${theme.input} px-2 py-2 text-sm`}
                   />
                   <button
+                    tabIndex={21}
                     type="button"
                     onClick={addSubtaskFromInput}
                     className="px-2.5 py-2 rounded-xl text-sm border border-emerald-600 bg-emerald-500/15 hover:bg-emerald-500/25"
@@ -940,6 +1217,7 @@ function TaskModal({ onClose, onSave, state, editingTaskId, allLabels, onDelete,
             <div>
               <div className={`text-xs ${theme.muted} mb-1`}>Column</div>
               <select
+                tabIndex={3}
                 value={columnId}
                 onChange={(e) => setColumnId(e.target.value)}
                 className={`w-full rounded-2xl ${theme.input} px-2.5 py-2 text-sm`}
@@ -955,6 +1233,7 @@ function TaskModal({ onClose, onSave, state, editingTaskId, allLabels, onDelete,
             <div>
               <div className={`text-xs ${theme.muted} mb-1`}>Priority</div>
               <select
+                tabIndex={4}
                 value={priority}
                 onChange={(e) => setPriority(e.target.value)}
                 className={`w-full rounded-2xl ${theme.input} px-2.5 py-2 text-sm`}
@@ -970,6 +1249,7 @@ function TaskModal({ onClose, onSave, state, editingTaskId, allLabels, onDelete,
             <div>
               <div className={`text-xs ${theme.muted} mb-1`}>Due date</div>
               <input
+                tabIndex={5}
                 type="date"
                 value={dueDate}
                 onChange={(e) => setDueDate(e.target.value)}
@@ -995,6 +1275,7 @@ function TaskModal({ onClose, onSave, state, editingTaskId, allLabels, onDelete,
                 })}
               </div>
               <input
+                tabIndex={6}
                 placeholder="New label"
                 onKeyDown={(e) => {
                   const v = (e.currentTarget as HTMLInputElement).value.trim();
@@ -1012,6 +1293,7 @@ function TaskModal({ onClose, onSave, state, editingTaskId, allLabels, onDelete,
         <div className="mt-4 flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
           {isEdit && (
             <button
+              tabIndex={100}
               type="button"
               onClick={() => {
                 onDelete(task.id);
@@ -1024,6 +1306,7 @@ function TaskModal({ onClose, onSave, state, editingTaskId, allLabels, onDelete,
           )}
           <div className="sm:ml-auto flex items-center gap-2">
             <button
+              tabIndex={101}
               type="button"
               onClick={onClose}
               className={`flex-1 sm:flex-none px-3 py-2 rounded-xl text-sm border ${theme.border} ${theme.subtle}`}
@@ -1031,6 +1314,7 @@ function TaskModal({ onClose, onSave, state, editingTaskId, allLabels, onDelete,
               Cancel
             </button>
             <button
+              tabIndex={102}
               type="button"
               onClick={handleSave}
               className="flex-1 sm:flex-none px-3 py-2 rounded-xl text-sm border border-emerald-600 bg-emerald-500/15 hover:bg-emerald-500/25"
@@ -1116,7 +1400,10 @@ function SettingsModal({ onClose, onToggleTheme, isDark, onExport, onImport, onO
   );
 }
 
-function ShortcutsModal({ onClose, theme = { surface: "bg-zinc-900", border: "border-zinc-800" } }: any) {
+function ShortcutsModal({ onClose, theme, shortcuts, getShortcutDisplay }: any) {
+  const globalShortcuts = shortcuts.filter((s: any) => s.config.category === 'global');
+  const editorShortcuts = shortcuts.filter((s: any) => s.config.category === 'editor');
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4">
       <div className="absolute inset-0 bg-black/60" onClick={onClose} />
@@ -1132,18 +1419,38 @@ function ShortcutsModal({ onClose, theme = { surface: "bg-zinc-900", border: "bo
             ✕
           </button>
         </div>
-        <div className="space-y-2 text-sm">
-          <div className="flex items-center justify-between">
-            <span>New task</span>
-            <kbd className="px-2 py-1 rounded border">N</kbd>
+        
+        <div className="space-y-4 text-sm max-h-[60vh] overflow-y-auto">
+          <div>
+            <h4 className="font-medium mb-2 text-emerald-600">Global Shortcuts</h4>
+            <div className="space-y-2">
+              {globalShortcuts.map((shortcut: any, index: number) => (
+                <div key={index} className="flex items-center justify-between">
+                  <span>{shortcut.config.description}</span>
+                  <kbd className="px-2 py-1 rounded border text-xs font-mono">
+                    {getShortcutDisplay(shortcut.config)}
+                  </kbd>
+                </div>
+              ))}
+            </div>
           </div>
-          <div className="flex items-center justify-between">
-            <span>Search</span>
-            <kbd className="px-2 py-1 rounded border">/</kbd>
-          </div>
-          <div className="flex items-center justify-between">
-            <span>Open shortcuts</span>
-            <kbd className="px-2 py-1 rounded border">?</kbd>
+          
+          <div>
+            <h4 className="font-medium mb-2 text-blue-600">Task Editor Shortcuts</h4>
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <span>Save and close</span>
+                <kbd className="px-2 py-1 rounded border text-xs font-mono">Enter</kbd>
+              </div>
+              <div className="flex items-center justify-between">
+                <span>Close without saving</span>
+                <kbd className="px-2 py-1 rounded border text-xs font-mono">Escape</kbd>
+              </div>
+              <div className="flex items-center justify-between">
+                <span>Navigate fields</span>
+                <kbd className="px-2 py-1 rounded border text-xs font-mono">Tab</kbd>
+              </div>
+            </div>
           </div>
         </div>
       </motion.div>
