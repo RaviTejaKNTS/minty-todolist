@@ -153,6 +153,7 @@ const defaultState = () => {
     sortMode: "manual", // manual | due | priority | created
     filters: { text: "", priorities: [], labels: [], due: "all" },
     activeId: null,
+    selectedTaskId: null,
     showTaskModal: false,
     editingTaskId: null,
     addingColumn: false,
@@ -160,6 +161,7 @@ const defaultState = () => {
     tempTitle: "",
     showShortcuts: false,
     showSettings: false,
+    showFilters: false,
   } as any;
 };
 
@@ -418,6 +420,146 @@ export default function MintyApp() {
   const filtersActive =
     state.filters.text || state.filters.priorities.length || state.filters.labels.length || state.filters.due !== "all";
 
+  // Keyboard shortcuts
+  useEffect(() => {
+    const findTaskColumnIndex = (taskId: string) =>
+      state.columns.findIndex((c: any) => c.taskIds.includes(taskId));
+
+    const selectTask = (colIdx: number, taskIdx: number) => {
+      const col = state.columns[colIdx];
+      if (!col) return;
+      const ids = sortTasks(filteredTaskIds(col));
+      const id = ids[taskIdx];
+      if (id) setState((s: any) => ({ ...s, selectedTaskId: id }));
+    };
+
+    const navigate = (key: string) => {
+      if (!state.selectedTaskId) {
+        selectTask(0, 0);
+        return;
+      }
+      const colIdx = findTaskColumnIndex(state.selectedTaskId);
+      const col = state.columns[colIdx];
+      if (!col) return;
+      const ids = sortTasks(filteredTaskIds(col));
+      const idx = ids.indexOf(state.selectedTaskId);
+      if (key === "ArrowUp") selectTask(colIdx, Math.max(0, idx - 1));
+      if (key === "ArrowDown") selectTask(colIdx, Math.min(ids.length - 1, idx + 1));
+      if (key === "ArrowLeft") selectTask(Math.max(0, colIdx - 1), idx);
+      if (key === "ArrowRight") selectTask(Math.min(state.columns.length - 1, colIdx + 1), idx);
+    };
+
+    const moveWithin = (key: string) => {
+      if (!state.selectedTaskId) return;
+      const colIdx = findTaskColumnIndex(state.selectedTaskId);
+      const col = state.columns[colIdx];
+      if (!col) return;
+      const ids = col.taskIds;
+      const idx = ids.indexOf(state.selectedTaskId);
+      const target = key === "ArrowUp" ? idx - 1 : idx + 1;
+      if (target < 0 || target >= ids.length) return;
+      const newIds = reorderWithin(ids, state.selectedTaskId, ids[target]);
+      const newColumns = state.columns.map((c: any, i: number) =>
+        i === colIdx ? { ...c, taskIds: newIds } : c
+      );
+      setState((s: any) => ({ ...s, columns: newColumns }));
+    };
+
+    const moveAcross = (key: string) => {
+      if (!state.selectedTaskId) return;
+      const fromIdx = findTaskColumnIndex(state.selectedTaskId);
+      const toIdx = key === "ArrowLeft" ? fromIdx - 1 : fromIdx + 1;
+      if (toIdx < 0 || toIdx >= state.columns.length) return;
+      const fromCol = state.columns[fromIdx];
+      const toCol = state.columns[toIdx];
+      const samePosId = toCol.taskIds[ fromCol.taskIds.indexOf(state.selectedTaskId) ] || null;
+      const moved = moveItemBetween(fromCol.taskIds, toCol.taskIds, state.selectedTaskId, samePosId);
+      const newColumns = state.columns.map((c: any) =>
+        c.id === fromCol.id ? { ...c, taskIds: moved.from } : c.id === toCol.id ? { ...c, taskIds: moved.to } : c
+      );
+      setState((s: any) => {
+        const tasks = { ...s.tasks } as any;
+        if (tasks[state.selectedTaskId]) tasks[state.selectedTaskId].updatedAt = Date.now();
+        return { ...s, columns: newColumns, tasks };
+      });
+    };
+
+    const toggleComplete = () => {
+      if (!state.selectedTaskId) return;
+      const fromIdx = findTaskColumnIndex(state.selectedTaskId);
+      const doneIdx = state.columns.findIndex((c: any) => c.id === "done");
+      if (doneIdx === -1) return;
+      const toIdx = fromIdx === doneIdx ? 0 : doneIdx;
+      const fromCol = state.columns[fromIdx];
+      const toCol = state.columns[toIdx];
+      const moved = moveItemBetween(fromCol.taskIds, toCol.taskIds, state.selectedTaskId, null);
+      const newColumns = state.columns.map((c: any) =>
+        c.id === fromCol.id ? { ...c, taskIds: moved.from } : c.id === toCol.id ? { ...c, taskIds: moved.to } : c
+      );
+      setState((s: any) => {
+        const tasks = { ...s.tasks } as any;
+        if (tasks[state.selectedTaskId]) tasks[state.selectedTaskId].updatedAt = Date.now();
+        return { ...s, columns: newColumns, tasks };
+      });
+    };
+
+    const onKey = (e: KeyboardEvent) => {
+      if (state.showTaskModal || state.showSettings || state.showShortcuts) return;
+      const tag = (e.target as HTMLElement).tagName;
+      const inInput = ["INPUT", "TEXTAREA", "SELECT"].includes(tag);
+      const mod = e.metaKey || e.ctrlKey;
+      const key = e.key;
+      if (mod && key.toLowerCase() === "n") {
+        e.preventDefault();
+        e.shiftKey ? startAddColumn() : openNewTask();
+        return;
+      }
+      if (mod && key.toLowerCase() === "f") {
+        e.preventDefault();
+        e.shiftKey
+          ? setState((s: any) => ({ ...s, showFilters: !s.showFilters }))
+          : document.getElementById("searchInput")?.focus();
+        return;
+      }
+      if (inInput) return;
+      if (!mod && ["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].includes(key)) {
+        e.preventDefault();
+        navigate(key);
+        return;
+      }
+      if (mod && ["ArrowUp", "ArrowDown"].includes(key)) {
+        e.preventDefault();
+        moveWithin(key);
+        return;
+      }
+      if (mod && ["ArrowLeft", "ArrowRight"].includes(key)) {
+        e.preventDefault();
+        moveAcross(key);
+        return;
+      }
+      if (key === " " && !mod) {
+        e.preventDefault();
+        toggleComplete();
+        return;
+      }
+      if ((key === "Delete" || (mod && key === "Backspace")) && state.selectedTaskId) {
+        e.preventDefault();
+        deleteTask(state.selectedTaskId);
+        setState((s: any) => ({ ...s, selectedTaskId: null }));
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [state, openNewTask, startAddColumn, deleteTask]);
+
+  useEffect(() => {
+    if (state.selectedTaskId) {
+      document
+        .getElementById(`task-${state.selectedTaskId}`)
+        ?.scrollIntoView({ block: "nearest", inline: "nearest" });
+    }
+  }, [state.selectedTaskId]);
+
   return (
     <div className={`min-h-screen w-full ${bg} overflow-x-hidden`}>
       {/* Top bar */}
@@ -447,74 +589,80 @@ export default function MintyApp() {
 
             {/* Filters & Sort remain in header */}
             <div className="hidden lg:flex items-center gap-2">
-              <div className="relative group">
-                <button type="button" className={`inline-flex items-center gap-2 rounded-2xl border ${border} ${surface} px-3 py-2 text-sm ${subtle}`}>
+              <div className="relative">
+                <button
+                  type="button"
+                  onClick={() => setState((s: any) => ({ ...s, showFilters: !s.showFilters }))}
+                  className={`inline-flex items-center gap-2 rounded-2xl border ${border} ${surface} px-3 py-2 text-sm ${subtle}`}
+                >
                   <Filter className="h-4 w-4" /> Filters
                   <ChevronDown className="h-4 w-4 opacity-80" />
                 </button>
-                <div className={`absolute right-0 mt-2 hidden group-hover:block w-[280px] lg:w-[320px] rounded-2xl border ${border} ${surface} p-3 shadow-xl z-50`}>
-                  <div className="space-y-3">
-                    <div>
-                      <div className={`text-xs uppercase ${muted} mb-1`}>Priorities</div>
-                      <div className="flex flex-wrap gap-2">
-                        {PRIORITIES.map((p) => (
-                          <button
-                            type="button"
-                            key={p}
-                            onClick={() =>
-                              setState((s: any) => {
-                                const has = s.filters.priorities.includes(p);
-                                const next = has ? s.filters.priorities.filter((q: any) => q !== p) : [...s.filters.priorities, p];
-                                return { ...s, filters: { ...s.filters, priorities: next } };
-                              })
-                            }
-                            className={`px-2.5 py-1 rounded-xl text-xs border ${surface} ${border} ${subtle}`}
-                          >
-                            {p}
-                          </button>
-                        ))}
+                {state.showFilters && (
+                  <div className={`absolute right-0 mt-2 w-[280px] lg:w-[320px] rounded-2xl border ${border} ${surface} p-3 shadow-xl z-50`}>
+                    <div className="space-y-3">
+                      <div>
+                        <div className={`text-xs uppercase ${muted} mb-1`}>Priorities</div>
+                        <div className="flex flex-wrap gap-2">
+                          {PRIORITIES.map((p) => (
+                            <button
+                              type="button"
+                              key={p}
+                              onClick={() =>
+                                setState((s: any) => {
+                                  const has = s.filters.priorities.includes(p);
+                                  const next = has ? s.filters.priorities.filter((q: any) => q !== p) : [...s.filters.priorities, p];
+                                  return { ...s, filters: { ...s.filters, priorities: next } };
+                                })
+                              }
+                              className={`px-2.5 py-1 rounded-xl text-xs border ${surface} ${border} ${subtle}`}
+                            >
+                              {p}
+                            </button>
+                          ))}
+                        </div>
                       </div>
-                    </div>
 
-                    <div>
-                      <div className={`text-xs uppercase ${muted} mb-1`}>Labels</div>
-                      <div className="flex flex-wrap gap-2">
-                        {allLabels.map((l: string) => (
-                          <button
-                            type="button"
-                            key={l}
-                            onClick={() =>
-                              setState((s: any) => {
-                                const has = s.filters.labels.includes(l);
-                                const next = has ? s.filters.labels.filter((q: any) => q !== l) : [...s.filters.labels, l];
-                                return { ...s, filters: { ...s.filters, labels: next } };
-                              })
-                            }
-                            className={`px-2.5 py-1 rounded-xl text-xs border ${surface} ${border} ${subtle}`}
-                          >
-                            #{l}
-                          </button>
-                        ))}
+                      <div>
+                        <div className={`text-xs uppercase ${muted} mb-1`}>Labels</div>
+                        <div className="flex flex-wrap gap-2">
+                          {allLabels.map((l: string) => (
+                            <button
+                              type="button"
+                              key={l}
+                              onClick={() =>
+                                setState((s: any) => {
+                                  const has = s.filters.labels.includes(l);
+                                  const next = has ? s.filters.labels.filter((q: any) => q !== l) : [...s.filters.labels, l];
+                                  return { ...s, filters: { ...s.filters, labels: next } };
+                                })
+                              }
+                              className={`px-2.5 py-1 rounded-xl text-xs border ${surface} ${border} ${subtle}`}
+                            >
+                              #{l}
+                            </button>
+                          ))}
+                        </div>
                       </div>
-                    </div>
 
-                    <div>
-                      <div className={`text-xs uppercase ${muted} mb-1`}>Due</div>
-                      <div className="flex items-center gap-2">
-                        {["all", "overdue", "week"].map((k) => (
-                          <button
-                            type="button"
-                            key={k}
-                            onClick={() => setState((s: any) => ({ ...s, filters: { ...s.filters, due: k } }))}
-                            className={`px-2.5 py-1 rounded-xl text-xs border ${surface} ${border} ${subtle}`}
-                          >
-                            {k}
-                          </button>
-                        ))}
+                      <div>
+                        <div className={`text-xs uppercase ${muted} mb-1`}>Due</div>
+                        <div className="flex items-center gap-2">
+                          {["all", "overdue", "week"].map((k) => (
+                            <button
+                              type="button"
+                              key={k}
+                              onClick={() => setState((s: any) => ({ ...s, filters: { ...s.filters, due: k } }))}
+                              className={`px-2.5 py-1 rounded-xl text-xs border ${surface} ${border} ${subtle}`}
+                            >
+                              {k}
+                            </button>
+                          ))}
+                        </div>
                       </div>
                     </div>
                   </div>
-                </div>
+                )}
               </div>
 
               <div className="hidden lg:flex items-center gap-2">
@@ -584,6 +732,8 @@ export default function MintyApp() {
                 tempTitle={state.tempTitle}
                 setTempTitle={(v: string) => setState((s: any) => ({ ...s, tempTitle: v }))}
                 onCommitRename={() => commitRenameColumn(col.id)}
+                selectedTaskId={state.selectedTaskId}
+                setSelectedTaskId={(id: string) => setState((s: any) => ({ ...s, selectedTaskId: id }))}
               />
             ))}
 
@@ -658,7 +808,7 @@ export default function MintyApp() {
   );
 }
 
-function Column({ col, tasks, ids, theme, onOpenNew, onOpenEdit, onDeleteColumn, onStartRename, onCancelRename, renaming, tempTitle, setTempTitle, onCommitRename }: any) {
+function Column({ col, tasks, ids, theme, onOpenNew, onOpenEdit, onDeleteColumn, onStartRename, onCancelRename, renaming, tempTitle, setTempTitle, onCommitRename, selectedTaskId, setSelectedTaskId }: any) {
   // make the whole column body droppable so dropping on empty space works
   const { setNodeRef } = useDroppable({ id: col.id });
 
@@ -720,6 +870,8 @@ function Column({ col, tasks, ids, theme, onOpenNew, onOpenEdit, onDeleteColumn,
                 task={tasks[taskId]}
                 onEdit={() => onOpenEdit(taskId)}
                 theme={theme}
+                selected={selectedTaskId === taskId}
+                onSelect={() => setSelectedTaskId(taskId)}
               />
             ))}
           </AnimatePresence>
@@ -729,13 +881,16 @@ function Column({ col, tasks, ids, theme, onOpenNew, onOpenEdit, onDeleteColumn,
   );
 }
 
-function SortableCard({ id, task, onEdit, theme }: any) {
+function SortableCard({ id, task, onEdit, theme, selected, onSelect }: any) {
   // Trello-like: click opens; drag after moving >6px
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id });
   const style = { transform: CSS.Transform.toString(transform), transition } as React.CSSProperties;
 
   const handleCardClick: React.MouseEventHandler = () => {
-    if (!isDragging) onEdit();
+    if (!isDragging) {
+      onSelect();
+      onEdit();
+    }
   };
 
   return (
@@ -744,12 +899,15 @@ function SortableCard({ id, task, onEdit, theme }: any) {
       ref={setNodeRef}
       style={style}
       onClick={handleCardClick}
+      onFocus={onSelect}
+      tabIndex={0}
       {...attributes}
       {...listeners}
       initial={{ opacity: 0, y: 6 }}
       animate={{ opacity: 1, y: 0 }}
       exit={{ opacity: 0, scale: 0.98 }}
-      className={`relative rounded-2xl border ${theme.border} ${theme.surface} p-3 shadow-sm select-none ${isDragging ? "ring-2 ring-emerald-400/40" : ""}`}
+      id={`task-${id}`}
+      className={`relative rounded-2xl border ${theme.border} ${theme.surface} p-3 shadow-sm select-none ${isDragging ? "ring-2 ring-emerald-400/40" : selected ? "ring-2 ring-emerald-500" : ""}`}
     >
       <div className="flex items-start gap-2">
         <div className="text-left flex-1">
