@@ -39,6 +39,7 @@ import {
   Check,
 } from "lucide-react";
 import confetti from "canvas-confetti";
+import shortcutManager from "./shortcutManager.js";
 
 // ------------------------------------------------------------
 // MINTY — Material‑ish Kanban To‑Do (Trello style)
@@ -160,6 +161,9 @@ const defaultState = () => {
     tempTitle: "",
     showShortcuts: false,
     showSettings: false,
+    showFilters: false,
+    selectedTaskId: null,
+    selectedColumnId: null,
   } as any;
 };
 
@@ -342,7 +346,9 @@ export default function MintyApp() {
       const tasks = { ...s.tasks } as any;
       delete tasks[taskId];
       const columns = s.columns.map((c: any) => ({ ...c, taskIds: c.taskIds.filter((id: string) => id !== taskId) }));
-      return { ...s, tasks, columns };
+      const selected = s.selectedTaskId === taskId ? null : s.selectedTaskId;
+      const selectedCol = s.selectedTaskId === taskId ? null : s.selectedColumnId;
+      return { ...s, tasks, columns, selectedTaskId: selected, selectedColumnId: selectedCol };
     });
   };
 
@@ -375,6 +381,151 @@ export default function MintyApp() {
     const base = new Set([...(state.labels || []), ...fromTasks]);
     return Array.from(base);
   }, [state.tasks, state.labels]);
+
+  // Keyboard shortcuts
+  useEffect(() => {
+    const offs = [
+      shortcutManager.register(['Ctrl+N', 'Meta+N'], (e: any) => {
+        e.preventDefault();
+        setState((s: any) => ({
+          ...s,
+          editingTaskId: { columnId: s.columns[0]?.id, taskId: null },
+          showTaskModal: true,
+        }));
+      }),
+      shortcutManager.register(['Ctrl+F', 'Meta+F'], (e: any) => {
+        e.preventDefault();
+        const el = document.getElementById('searchInput') as HTMLInputElement;
+        el?.focus();
+      }),
+      shortcutManager.register(['Ctrl+Shift+F', 'Meta+Shift+F'], (e: any) => {
+        e.preventDefault();
+        setState((s: any) => ({ ...s, showFilters: !s.showFilters }));
+      }),
+      shortcutManager.register(['Ctrl+Shift+N', 'Meta+Shift+N'], (e: any) => {
+        e.preventDefault();
+        setState((s: any) => ({ ...s, addingColumn: true, tempTitle: '' }));
+      }),
+      shortcutManager.register('ArrowDown', (e: any) => {
+        setState((s: any) => {
+          if (s.showTaskModal) return s;
+          const col = s.columns.find((c: any) => c.id === s.selectedColumnId) || s.columns[0];
+          if (!col || !col.taskIds.length) return s;
+          const ids = col.taskIds;
+          let idx = s.selectedTaskId ? ids.indexOf(s.selectedTaskId) : -1;
+          idx = Math.min(idx + 1, ids.length - 1);
+          e.preventDefault();
+          return { ...s, selectedTaskId: ids[idx], selectedColumnId: col.id };
+        });
+      }),
+      shortcutManager.register('ArrowUp', (e: any) => {
+        setState((s: any) => {
+          if (s.showTaskModal) return s;
+          const col = s.columns.find((c: any) => c.id === s.selectedColumnId) || s.columns[0];
+          if (!col || !col.taskIds.length) return s;
+          const ids = col.taskIds;
+          let idx = s.selectedTaskId ? ids.indexOf(s.selectedTaskId) : ids.length;
+          idx = Math.max(idx - 1, 0);
+          e.preventDefault();
+          return { ...s, selectedTaskId: ids[idx], selectedColumnId: col.id };
+        });
+      }),
+      shortcutManager.register(['Ctrl+ArrowUp', 'Meta+ArrowUp'], (e: any) => {
+        setState((s: any) => {
+          if (s.showTaskModal) return s;
+          const col = s.columns.find((c: any) => c.id === s.selectedColumnId);
+          if (!col) return s;
+          const ids = [...col.taskIds];
+          const idx = ids.indexOf(s.selectedTaskId);
+          if (idx <= 0) return s;
+          e.preventDefault();
+          const newIds = reorderWithin(ids, s.selectedTaskId, ids[idx - 1]);
+          const columns = s.columns.map((c: any) => (c.id === col.id ? { ...c, taskIds: newIds } : c));
+          return { ...s, columns };
+        });
+      }),
+      shortcutManager.register(['Ctrl+ArrowDown', 'Meta+ArrowDown'], (e: any) => {
+        setState((s: any) => {
+          if (s.showTaskModal) return s;
+          const col = s.columns.find((c: any) => c.id === s.selectedColumnId);
+          if (!col) return s;
+          const ids = [...col.taskIds];
+          const idx = ids.indexOf(s.selectedTaskId);
+          if (idx === -1 || idx >= ids.length - 1) return s;
+          e.preventDefault();
+          const newIds = reorderWithin(ids, s.selectedTaskId, ids[idx + 1]);
+          const columns = s.columns.map((c: any) => (c.id === col.id ? { ...c, taskIds: newIds } : c));
+          return { ...s, columns };
+        });
+      }),
+      shortcutManager.register(['Ctrl+ArrowLeft', 'Meta+ArrowLeft'], (e: any) => {
+        setState((s: any) => {
+          if (s.showTaskModal) return s;
+          const fromIndex = s.columns.findIndex((c: any) => c.id === s.selectedColumnId);
+          if (fromIndex <= 0) return s;
+          const toIndex = fromIndex - 1;
+          const fromCol = s.columns[fromIndex];
+          const toCol = s.columns[toIndex];
+          if (!fromCol || !toCol) return s;
+          e.preventDefault();
+          const moved = moveItemBetween(fromCol.taskIds, toCol.taskIds, s.selectedTaskId, null);
+          const columns = s.columns.map((c: any, i: number) =>
+            i === fromIndex ? { ...c, taskIds: moved.from } : i === toIndex ? { ...c, taskIds: moved.to } : c
+          );
+          return { ...s, columns, selectedColumnId: toCol.id };
+        });
+      }),
+      shortcutManager.register(['Ctrl+ArrowRight', 'Meta+ArrowRight'], (e: any) => {
+        setState((s: any) => {
+          if (s.showTaskModal) return s;
+          const fromIndex = s.columns.findIndex((c: any) => c.id === s.selectedColumnId);
+          if (fromIndex === -1 || fromIndex >= s.columns.length - 1) return s;
+          const toIndex = fromIndex + 1;
+          const fromCol = s.columns[fromIndex];
+          const toCol = s.columns[toIndex];
+          if (!fromCol || !toCol) return s;
+          e.preventDefault();
+          const moved = moveItemBetween(fromCol.taskIds, toCol.taskIds, s.selectedTaskId, null);
+          const columns = s.columns.map((c: any, i: number) =>
+            i === fromIndex ? { ...c, taskIds: moved.from } : i === toIndex ? { ...c, taskIds: moved.to } : c
+          );
+          return { ...s, columns, selectedColumnId: toCol.id };
+        });
+      }),
+      shortcutManager.register('Space', (e: any) => {
+        setState((s: any) => {
+          if (s.showTaskModal) return s;
+          if (!s.selectedTaskId) return s;
+          const fromIndex = s.columns.findIndex((c: any) => c.id === s.selectedColumnId);
+          const doneIndex = s.columns.findIndex((c: any) => c.id === 'done');
+          if (fromIndex === -1 || doneIndex === -1) return s;
+          const toIndex = fromIndex === doneIndex ? 0 : doneIndex;
+          const fromCol = s.columns[fromIndex];
+          const toCol = s.columns[toIndex];
+          e.preventDefault();
+          const moved = moveItemBetween(fromCol.taskIds, toCol.taskIds, s.selectedTaskId, null);
+          const columns = s.columns.map((c: any, i: number) =>
+            i === fromIndex ? { ...c, taskIds: moved.from } : i === toIndex ? { ...c, taskIds: moved.to } : c
+          );
+          return { ...s, columns, selectedColumnId: toCol.id };
+        });
+      }),
+      shortcutManager.register('Delete', (e: any) => {
+        setState((s: any) => {
+          if (s.showTaskModal || !s.selectedTaskId) return s;
+          e.preventDefault();
+          const tasks = { ...s.tasks } as any;
+          delete tasks[s.selectedTaskId];
+          const columns = s.columns.map((c: any) => ({
+            ...c,
+            taskIds: c.taskIds.filter((id: string) => id !== s.selectedTaskId),
+          }));
+          return { ...s, tasks, columns, selectedTaskId: null, selectedColumnId: null };
+        });
+      }),
+    ];
+    return () => offs.forEach((off) => off());
+  }, []);
 
   const filteredTaskIds = (col: any) => {
     const ids = col.taskIds;
@@ -447,12 +598,17 @@ export default function MintyApp() {
 
             {/* Filters & Sort remain in header */}
             <div className="hidden lg:flex items-center gap-2">
-              <div className="relative group">
-                <button type="button" className={`inline-flex items-center gap-2 rounded-2xl border ${border} ${surface} px-3 py-2 text-sm ${subtle}`}>
+              <div className="relative">
+                <button
+                  type="button"
+                  onClick={() => setState((s: any) => ({ ...s, showFilters: !s.showFilters }))}
+                  className={`inline-flex items-center gap-2 rounded-2xl border ${border} ${surface} px-3 py-2 text-sm ${subtle}`}
+                >
                   <Filter className="h-4 w-4" /> Filters
                   <ChevronDown className="h-4 w-4 opacity-80" />
                 </button>
-                <div className={`absolute right-0 mt-2 hidden group-hover:block w-[280px] lg:w-[320px] rounded-2xl border ${border} ${surface} p-3 shadow-xl z-50`}>
+                {state.showFilters && (
+                  <div className={`absolute right-0 mt-2 w-[280px] lg:w-[320px] rounded-2xl border ${border} ${surface} p-3 shadow-xl z-50`}>
                   <div className="space-y-3">
                     <div>
                       <div className={`text-xs uppercase ${muted} mb-1`}>Priorities</div>
@@ -492,7 +648,7 @@ export default function MintyApp() {
                             }
                             className={`px-2.5 py-1 rounded-xl text-xs border ${surface} ${border} ${subtle}`}
                           >
-                            #{l}
+                            {l}
                           </button>
                         ))}
                       </div>
@@ -584,6 +740,7 @@ export default function MintyApp() {
                 tempTitle={state.tempTitle}
                 setTempTitle={(v: string) => setState((s: any) => ({ ...s, tempTitle: v }))}
                 onCommitRename={() => commitRenameColumn(col.id)}
+                selectedTaskId={state.selectedTaskId}
               />
             ))}
 
@@ -658,7 +815,7 @@ export default function MintyApp() {
   );
 }
 
-function Column({ col, tasks, ids, theme, onOpenNew, onOpenEdit, onDeleteColumn, onStartRename, onCancelRename, renaming, tempTitle, setTempTitle, onCommitRename }: any) {
+function Column({ col, tasks, ids, theme, onOpenNew, onOpenEdit, onDeleteColumn, onStartRename, onCancelRename, renaming, tempTitle, setTempTitle, onCommitRename, selectedTaskId }: any) {
   // make the whole column body droppable so dropping on empty space works
   const { setNodeRef } = useDroppable({ id: col.id });
 
@@ -720,6 +877,7 @@ function Column({ col, tasks, ids, theme, onOpenNew, onOpenEdit, onDeleteColumn,
                 task={tasks[taskId]}
                 onEdit={() => onOpenEdit(taskId)}
                 theme={theme}
+                selected={selectedTaskId === taskId}
               />
             ))}
           </AnimatePresence>
@@ -729,7 +887,7 @@ function Column({ col, tasks, ids, theme, onOpenNew, onOpenEdit, onDeleteColumn,
   );
 }
 
-function SortableCard({ id, task, onEdit, theme }: any) {
+function SortableCard({ id, task, onEdit, theme, selected }: any) {
   // Trello-like: click opens; drag after moving >6px
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id });
   const style = { transform: CSS.Transform.toString(transform), transition } as React.CSSProperties;
@@ -749,7 +907,7 @@ function SortableCard({ id, task, onEdit, theme }: any) {
       initial={{ opacity: 0, y: 6 }}
       animate={{ opacity: 1, y: 0 }}
       exit={{ opacity: 0, scale: 0.98 }}
-      className={`relative rounded-2xl border ${theme.border} ${theme.surface} p-3 shadow-sm select-none ${isDragging ? "ring-2 ring-emerald-400/40" : ""}`}
+      className={`relative rounded-2xl border ${theme.border} ${theme.surface} p-3 shadow-sm select-none ${isDragging ? "ring-2 ring-emerald-400/40" : selected ? "ring-2 ring-emerald-500" : ""}`}
     >
       <div className="flex items-start gap-2">
         <div className="text-left flex-1">
@@ -816,15 +974,20 @@ function TaskModal({ onClose, onSave, state, editingTaskId, allLabels, onDelete,
 
   // Close on ESC, Submit on Enter (except textarea)
   useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
-      if (e.key === "Enter" && (e.target as HTMLElement)?.tagName !== "TEXTAREA") {
-        e.preventDefault();
-        handleSave();
-      }
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
+    const offs = [
+      shortcutManager.register('Escape', () => onClose(), { allowInInput: true }),
+      shortcutManager.register(
+        'Enter',
+        (e: any) => {
+          if ((e.target as HTMLElement)?.tagName !== 'TEXTAREA') {
+            e.preventDefault();
+            handleSave();
+          }
+        },
+        { allowInInput: true }
+      ),
+    ];
+    return () => offs.forEach((off) => off());
   }, [title, description, priority, dueDate, labels, subtasks, columnId]);
 
   const handleSave = () =>
