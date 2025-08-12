@@ -38,6 +38,7 @@ import {
   Check,
 } from "lucide-react";
 import confetti from "canvas-confetti";
+import ProfileMenu from "./components/ProfileMenu";
 
 // ------------------------------------------------------------
 // TasksMint — Material‑ish Kanban To‑Do (Trello style)
@@ -778,6 +779,7 @@ export default function TasksMintApp() {
             >
               <SettingsIcon className="h-4 w-4" /> <span className="hidden sm:inline">Settings</span>
             </button>
+            <ProfileMenu />
           </div>
         </div>
       </div>

@@ -12,13 +12,13 @@ export default function AuthButtons() {
   const signInWithGoogle = () =>
     supabase.auth.signInWithOAuth({
       provider: 'google',
-      options: { redirectTo: window.location.origin + '/auth' },
+      options: { redirectTo: window.location.origin },
     });
 
   const signInWithApple = () =>
     supabase.auth.signInWithOAuth({
       provider: 'apple',
-      options: { redirectTo: window.location.origin + '/auth' },
+      options: { redirectTo: window.location.origin },
     });
 
   const continueAsGuest = async () => {
